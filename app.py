@@ -606,57 +606,76 @@ def handle_traditional_ml(data):
         # Preprocess data with detailed analysis
         X_scaled, y, scaler = preprocess_data(X, y)
         
-        # Model selection
+        # Train-test split parameters
+        st.sidebar.subheader("Training Configuration")
+        test_size = st.sidebar.slider("Test Size", 0.1, 0.5, 0.2, key="test_size")
+        
+        # Perform train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=42)
+        
+        # Model selection in sidebar
+        st.sidebar.header("Model Configuration")
         model_types = ["Linear Regression", "Random Forest", "XGBoost", "LightGBM"]
         if CATBOOST_AVAILABLE:
             model_types.append("CatBoost")
         
         model_type = st.sidebar.selectbox(
-            "Select Model",
-            model_types
+            "Select Model Type",
+            model_types,
+            key="model_type_select"
         )
         
-        # Model parameters
+        # Model parameters in sidebar
         st.sidebar.subheader("Model Parameters")
+        
         if model_type == "Linear Regression":
-            fit_intercept = st.sidebar.checkbox("Fit Intercept", value=True)
-            normalize = st.sidebar.checkbox("Normalize", value=False)
+            st.sidebar.write("#### Linear Regression Parameters")
+            fit_intercept = st.sidebar.checkbox("Fit Intercept", value=True, key="lr_fit_intercept")
+            normalize = st.sidebar.checkbox("Normalize", value=False, key="lr_normalize")
             
         elif model_type == "Random Forest":
-            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
-            max_depth = st.sidebar.slider("Max Depth", 1, 20, 10)
+            st.sidebar.write("#### Random Forest Parameters")
+            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100, key="rf_n_estimators")
+            max_depth = st.sidebar.slider("Max Depth", 1, 20, 10, key="rf_max_depth")
+            min_samples_split = st.sidebar.slider("Min Samples Split", 2, 20, 2, key="rf_min_samples_split")
+            min_samples_leaf = st.sidebar.slider("Min Samples Leaf", 1, 10, 1, key="rf_min_samples_leaf")
             
         elif model_type == "XGBoost":
-            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1)
-            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
-            max_depth = st.sidebar.slider("Max Depth", 1, 20, 6)
+            st.sidebar.write("#### XGBoost Parameters")
+            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1, key="xgb_learning_rate")
+            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100, key="xgb_n_estimators")
+            max_depth = st.sidebar.slider("Max Depth", 1, 20, 6, key="xgb_max_depth")
+            subsample = st.sidebar.slider("Subsample", 0.5, 1.0, 1.0, key="xgb_subsample")
+            colsample_bytree = st.sidebar.slider("Colsample by Tree", 0.5, 1.0, 1.0, key="xgb_colsample")
             
         elif model_type == "LightGBM":
-            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1)
-            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100)
-            max_depth = st.sidebar.slider("Max Depth", 1, 20, 6)
+            st.sidebar.write("#### LightGBM Parameters")
+            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1, key="lgbm_learning_rate")
+            n_estimators = st.sidebar.slider("Number of Trees", 10, 200, 100, key="lgbm_n_estimators")
+            max_depth = st.sidebar.slider("Max Depth", 1, 20, 6, key="lgbm_max_depth")
+            num_leaves = st.sidebar.slider("Number of Leaves", 20, 100, 31, key="lgbm_num_leaves")
+            subsample = st.sidebar.slider("Subsample", 0.5, 1.0, 1.0, key="lgbm_subsample")
             
         elif model_type == "CatBoost" and CATBOOST_AVAILABLE:
-            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1)
-            iterations = st.sidebar.slider("Number of Trees", 10, 200, 100)
-            depth = st.sidebar.slider("Max Depth", 1, 20, 6)
-        
-        # Train-test split
-        test_size = st.sidebar.slider("Test Size", 0.1, 0.5, 0.2)
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=42)
+            st.sidebar.write("#### CatBoost Parameters")
+            learning_rate = st.sidebar.slider("Learning Rate", 0.01, 0.3, 0.1, key="catboost_learning_rate")
+            iterations = st.sidebar.slider("Number of Trees", 10, 200, 100, key="catboost_iterations")
+            depth = st.sidebar.slider("Max Depth", 1, 20, 6, key="catboost_depth")
+            l2_leaf_reg = st.sidebar.slider("L2 Regularization", 0.0, 10.0, 3.0, key="catboost_l2_leaf_reg")
+            border_count = st.sidebar.slider("Border Count", 32, 255, 128, key="catboost_border_count")
         
         # Train model
         with st.spinner("Training model..."):
             if model_type == "Linear Regression":
                 model = train_linear_regression(X_train, y_train, fit_intercept, normalize)
             elif model_type == "Random Forest":
-                model = train_random_forest(X_train, y_train, n_estimators, max_depth)
+                model = train_random_forest(X_train, y_train, n_estimators, max_depth, min_samples_split, min_samples_leaf)
             elif model_type == "XGBoost":
-                model = train_xgboost(X_train, y_train, learning_rate, n_estimators, max_depth)
+                model = train_xgboost(X_train, y_train, learning_rate, n_estimators, max_depth, subsample, colsample_bytree)
             elif model_type == "LightGBM":
-                model = train_lightgbm(X_train, y_train, learning_rate, n_estimators, max_depth)
+                model = train_lightgbm(X_train, y_train, learning_rate, n_estimators, max_depth, num_leaves, subsample)
             elif model_type == "CatBoost" and CATBOOST_AVAILABLE:
-                model = train_catboost(X_train, y_train, learning_rate, iterations, depth)
+                model = train_catboost(X_train, y_train, learning_rate, iterations, depth, l2_leaf_reg, border_count)
             
             # Model evaluation
             st.subheader("Model Evaluation")

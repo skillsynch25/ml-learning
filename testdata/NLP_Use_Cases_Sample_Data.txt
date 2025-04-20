@@ -1,0 +1,57 @@
+
+=== Sentiment Analysis ===
+Text: I absolutely loved the movie. The plot was engaging and the acting was top-notch!
+Label: positive
+
+Text: The food was bland and the service was painfully slow. Not going back.
+Label: negative
+
+Text: The concert was okay. Some parts were great, others not so much.
+Label: neutral
+
+=== Named Entity Recognition (NER) ===
+Text: Barack Obama was born in Hawaii and served as the 44th President of the United States.
+Entities: [("Barack Obama", "PERSON"), ("Hawaii", "LOCATION"), ("44th President of the United States", "TITLE")]
+
+Text: Apple Inc. is planning to open a new office in Berlin by 2025.
+Entities: [("Apple Inc.", "ORGANIZATION"), ("Berlin", "LOCATION"), ("2025", "DATE")]
+
+=== Text Classification ===
+Text: The Federal Reserve raised interest rates to curb inflation.
+Category: economics
+
+Text: LeBron James led the Lakers to a thrilling overtime victory.
+Category: sports
+
+Text: NASA's new satellite will monitor Earth's climate from space.
+Category: science
+
+=== Question Answering ===
+Context: Mount Everest is the highest mountain on Earth, standing at 8,848 meters.
+Question: What is the height of Mount Everest?
+Answer: 8,848 meters
+
+Context: The Eiffel Tower is located in Paris and was completed in 1889.
+Question: Where is the Eiffel Tower located?
+Answer: Paris
+
+=== Text Summarization ===
+Text: OpenAI has released several powerful AI models over the years. These include GPT-2, GPT-3, and now ChatGPT. Each model has progressively improved in terms of performance and capabilities.
+Summary: OpenAI's models like GPT-2, GPT-3, and ChatGPT have improved over time.
+
+Text: The global economy is facing challenges due to inflation, supply chain disruptions, and energy shortages. Governments are responding with policy changes and stimulus packages.
+Summary: Inflation and supply issues are affecting the global economy, prompting government responses.
+
+=== Intent Recognition ===
+Text: What’s the weather like in Paris today?
+Intent: get_weather
+
+Text: Book a table for two at an Italian restaurant tonight.
+Intent: make_reservation
+
+Text: Can you remind me to call John at 3 PM?
+Intent: set_reminder
+
+Text: I want to cancel my subscription.
+Intent: cancel_subscription
+
