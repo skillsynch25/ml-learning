@@ -194,6 +194,16 @@ Feel free to submit issues and enhancement requests! We welcome contributions in
 - Documentation updates
 - Bug reports and fixes
 
+### 🚀 Live App
+
+https://skillsynch-ml-models.streamlit.app/
+
+### 🖼️ Screenshot
+
+![image](https://github.com/user-attachments/assets/473a2d68-ee15-4849-a15f-aeb7dcb8d16d)
+
+![image](https://github.com/user-attachments/assets/9732b8b7-9fe2-47e4-891f-d09a669bece2)
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details. 
