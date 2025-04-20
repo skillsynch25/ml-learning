@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModel
 import numpy as np
+import math
 
 class CNNModel:
     def __init__(self, input_shape, num_classes):
@@ -25,29 +26,37 @@ class CNNModel:
         history = self.model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
         return history
 
-class RNNModel:
-    def __init__(self, input_dim, hidden_dim, num_layers, num_classes):
-        self.model = nn.Sequential(
-            nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True),
-            nn.Linear(hidden_dim, num_classes)
+class RNNModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers, output_dim, dropout, bidirectional):
+        super(RNNModel, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.bidirectional = bidirectional
+        
+        # RNN layer
+        self.rnn = nn.RNN(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
         )
         
-    def train(self, X_train, y_train, epochs=10, batch_size=32):
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.Adam(self.model.parameters())
+        # Fully connected layer
+        fc_input_dim = hidden_dim * 2 if bidirectional else hidden_dim
+        self.fc = nn.Linear(fc_input_dim, output_dim)
+    
+    def forward(self, x):
+        # Initialize hidden state with zeros
+        h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1), x.size(0), self.hidden_dim).to(x.device)
         
-        for epoch in range(epochs):
-            for i in range(0, len(X_train), batch_size):
-                batch_X = torch.FloatTensor(X_train[i:i+batch_size])
-                batch_y = torch.LongTensor(y_train[i:i+batch_size])
-                
-                optimizer.zero_grad()
-                outputs = self.model(batch_X)
-                loss = criterion(outputs, batch_y)
-                loss.backward()
-                optimizer.step()
-                
-        return self.model
+        # Forward propagate RNN
+        out, _ = self.rnn(x, h0)
+        
+        # Decode the hidden state of the last time step
+        out = self.fc(out[:, -1, :])
+        return out
 
 class NLPModel:
     def __init__(self, model_name='bert-base-uncased'):
@@ -135,3 +144,74 @@ class GAN:
             g_loss = self.combined.train_on_batch(noise, valid)
             
         return self.generator, self.discriminator 
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_dim, d_model, nhead, num_encoder_layers, dim_feedforward, dropout, activation):
+        super().__init__()
+        
+        # Input embedding layer
+        self.embedding = nn.Linear(input_dim, d_model)
+        
+        # Positional encoding
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        
+        # Transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_encoder_layers
+        )
+        
+        # Output layer
+        self.fc = nn.Linear(d_model, 1)
+        
+    def forward(self, x):
+        # Input embedding
+        x = self.embedding(x)
+        
+        # Add positional encoding
+        x = self.pos_encoder(x)
+        
+        # Transformer encoder
+        x = self.transformer_encoder(x)
+        
+        # Take the last time step's output
+        x = x[:, -1, :]
+        
+        # Final prediction
+        return self.fc(x)
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
+        
+        # Create positional encodings on demand
+        self.register_buffer('pe', None)
+        
+    def _create_pe(self, max_len):
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.d_model, 2) * (-math.log(10000.0) / self.d_model))
+        pe = torch.zeros(max_len, 1, self.d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        return pe
+        
+    def forward(self, x):
+        # Get sequence length
+        seq_len = x.size(0)
+        
+        # Create or update positional encodings if needed
+        if self.pe is None or self.pe.size(0) < seq_len:
+            self.pe = self._create_pe(seq_len)
+            
+        # Add positional encoding
+        x = x + self.pe[:seq_len]
+        return self.dropout(x) 

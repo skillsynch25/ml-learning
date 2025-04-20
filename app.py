@@ -55,6 +55,8 @@ except ImportError:
 
 import torch
 import torch.nn as nn
+import math
+from nlp_models import TextPreprocessor, SentimentAnalyzer, WordFrequencyAnalyzer, TextClassifier, TextGenerator
 
 class LSTMModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers, output_dim, dropout, bidirectional):
@@ -119,6 +121,77 @@ class LSTMModel(nn.Module):
             st.write(f"Error occurred with input shape: {x.shape if hasattr(x, 'shape') else 'No shape'}")
             st.write(f"Error occurred with input type: {type(x)}")
             raise
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_dim, d_model, nhead, num_encoder_layers, dim_feedforward, dropout, activation):
+        super().__init__()
+        
+        # Input embedding layer
+        self.embedding = nn.Linear(input_dim, d_model)
+        
+        # Positional encoding
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        
+        # Transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_encoder_layers
+        )
+        
+        # Output layer
+        self.fc = nn.Linear(d_model, 1)
+        
+    def forward(self, x):
+        # Input embedding
+        x = self.embedding(x)
+        
+        # Add positional encoding
+        x = self.pos_encoder(x)
+        
+        # Transformer encoder
+        x = self.transformer_encoder(x)
+        
+        # Take the last time step's output
+        x = x[:, -1, :]
+        
+        # Final prediction
+        return self.fc(x)
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
+        
+        # Create positional encodings on demand
+        self.register_buffer('pe', None)
+        
+    def _create_pe(self, max_len):
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.d_model, 2) * (-math.log(10000.0) / self.d_model))
+        pe = torch.zeros(max_len, 1, self.d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        return pe
+        
+    def forward(self, x):
+        # Get sequence length
+        seq_len = x.size(0)
+        
+        # Create or update positional encodings if needed
+        if self.pe is None or self.pe.size(0) < seq_len:
+            self.pe = self._create_pe(seq_len)
+            
+        # Add positional encoding
+        x = x + self.pe[:seq_len]
+        return self.dropout(x)
 
 def main():
     st.title("Machine Learning Learning Platform")
@@ -845,107 +918,20 @@ def handle_deep_learning(data, dl_model_type, params):
     # Data Preprocessing
     st.write("### Data Preprocessing")
     
-    # Display data types
-    st.write("#### Data Types Overview")
-    data_types = pd.DataFrame({
-        'Column': data.columns,
-        'Data Type': data.dtypes,
-        'Unique Values': data.nunique(),
-        'Missing Values': data.isnull().sum()
-    })
-    st.dataframe(data_types)
+    # Select target column with unique key
+    target_column = st.selectbox("Select target column", data.columns, key="dl_target_column")
     
-    # Select target column
-    target_column = st.selectbox("Select target column", data.columns)
-    
-    # Select feature columns
+    # Select feature columns with unique key
     feature_columns = st.multiselect(
         "Select feature columns",
         [col for col in data.columns if col != target_column],
-        default=[col for col in data.columns if col != target_column]
+        default=[col for col in data.columns if col != target_column],
+        key="dl_feature_columns"
     )
     
     if target_column and feature_columns:
         # Data type handling
         st.write("#### Data Type Handling")
-        categorical_columns = []
-        numerical_columns = []
-        
-        for col in feature_columns:
-            if data[col].dtype in ['object', 'category', 'string']:
-                categorical_columns.append(col)
-            else:
-                numerical_columns.append(col)
-        
-        if categorical_columns:
-            st.write("Categorical columns detected:", categorical_columns)
-            encoding_method = st.selectbox(
-                "Select encoding method for categorical variables",
-                ["One-Hot Encoding", "Label Encoding", "Ordinal Encoding"]
-            )
-            
-            # Show sample of categorical data
-            st.write("Sample of categorical data:")
-            st.dataframe(data[categorical_columns].head())
-        
-        if numerical_columns:
-            st.write("Numerical columns detected:", numerical_columns)
-            # Show sample of numerical data
-            st.write("Sample of numerical data:")
-            st.dataframe(data[numerical_columns].head())
-            
-            # Show basic statistics
-            st.write("Basic statistics for numerical columns:")
-            st.dataframe(data[numerical_columns].describe())
-        
-        # Data Visualization
-        st.write("#### Data Visualization")
-        
-        # Plot numerical distributions
-        if numerical_columns:
-            st.write("##### Numerical Distributions")
-            for col in numerical_columns:
-                fig = px.histogram(data, x=col, title=f'Distribution of {col}')
-                st.plotly_chart(fig)
-        
-        # Plot categorical distributions
-        if categorical_columns:
-            st.write("##### Categorical Distributions")
-            for col in categorical_columns:
-                value_counts = data[col].value_counts()
-                fig = px.bar(
-                    x=value_counts.index,
-                    y=value_counts.values,
-                    title=f'Distribution of {col}',
-                    labels={'x': col, 'y': 'Count'}
-                )
-                st.plotly_chart(fig)
-        
-        # Correlation analysis for numerical columns
-        if len(numerical_columns) > 1:
-            st.write("##### Correlation Analysis")
-            corr_matrix = data[numerical_columns].corr()
-            fig = px.imshow(
-                corr_matrix,
-                title='Correlation Matrix',
-                color_continuous_scale='RdBu'
-            )
-            st.plotly_chart(fig)
-        
-        # Sequence Configuration
-        st.write("#### Sequence Configuration")
-        sequence_length = st.slider(
-            "Sequence Length",
-            min_value=1,
-            max_value=100,
-            value=10,
-            key="sequence_length_slider"
-        )
-        
-        # Data Preprocessing
-        st.write("#### Data Preprocessing")
-        
-        # Handle categorical variables
         categorical_columns = []
         numerical_columns = []
         
@@ -964,7 +950,7 @@ def handle_deep_learning(data, dl_model_type, params):
             encoding_method = st.selectbox(
                 "Select encoding method for categorical variables",
                 ["One-Hot Encoding", "Label Encoding", "Ordinal Encoding"],
-                key="encoding_method_select"
+                key="dl_categorical_encoding"
             )
             
             # Encode categorical variables
@@ -987,6 +973,7 @@ def handle_deep_learning(data, dl_model_type, params):
             X[numerical_columns] = scaler.fit_transform(X[numerical_columns])
         
         # Create sequences
+        sequence_length = params['sequence_length']
         def create_sequences(data, sequence_length):
             sequences = []
             for i in range(len(data) - sequence_length):
@@ -995,7 +982,7 @@ def handle_deep_learning(data, dl_model_type, params):
         
         # Convert input data to numpy array first
         X_array = np.array(X.values, dtype=np.float32)
-        y_array = np.array(y.values, dtype=np.int64)  # Convert target to int64
+        y_array = np.array(y.values, dtype=np.float32)  # Convert target to float32 for regression
         
         # Create sequences
         X_sequences = create_sequences(X_array, sequence_length)
@@ -1014,232 +1001,30 @@ def handle_deep_learning(data, dl_model_type, params):
         
         # Convert to PyTorch tensors
         import torch
-        X_train = torch.FloatTensor(X_train)  # Keep input as float
-        X_test = torch.FloatTensor(X_test)    # Keep input as float
-        y_train = torch.FloatTensor(y_train).view(-1, 1)  # Reshape target to [batch_size, 1]
-        y_test = torch.FloatTensor(y_test).view(-1, 1)    # Reshape target to [batch_size, 1]
+        X_train = torch.FloatTensor(X_train)
+        X_test = torch.FloatTensor(X_test)
+        y_train = torch.FloatTensor(y_train).view(-1, 1)
+        y_test = torch.FloatTensor(y_test).view(-1, 1)
         
-        # Display data shapes and types
-        st.write("#### Data Shapes and Types")
-        data_info = pd.DataFrame({
-            'Data': ['X_train', 'X_test', 'y_train', 'y_test'],
-            'Shape': [str(X_train.shape), str(X_test.shape), str(y_train.shape), str(y_test.shape)],
-            'Type': [str(X_train.dtype), str(X_test.dtype), str(y_train.dtype), str(y_test.dtype)]
-        })
-        st.dataframe(data_info)
-        
-        # Display target variable statistics
-        st.write("#### Target Variable Statistics")
-        target_stats = pd.DataFrame({
-            'Statistic': ['Min', 'Max', 'Mean', 'Std'],
-            'Value': [
-                float(y_train.min()),
-                float(y_train.max()),
-                float(y_train.mean()),
-                float(y_train.std())
-            ]
-        })
-        st.dataframe(target_stats)
-        
-        # Display tensor information
-        st.write("Tensor Information:")
-        tensor_info = pd.DataFrame({
-            'Tensor': ['X_train', 'X_test', 'y_train', 'y_test'],
-            'Shape': [str(X_train.shape), str(X_test.shape), str(y_train.shape), str(y_test.shape)],
-            'Type': [str(X_train.dtype), str(X_test.dtype), str(y_train.dtype), str(y_test.dtype)]
-        })
-        st.dataframe(tensor_info)
-        
-        # Train model
-        history = None
-        model = None  # Initialize model variable
-        with st.spinner("Training Model..."):
-            try:
-                # Convert training parameters to proper types
-                epochs = int(params['epochs'])
-                batch_size = int(params['batch_size'])
-                
-                # Create LSTM model
-                model = LSTMModel(
-                    input_dim=int(X_train.shape[2]),
-                    hidden_dim=int(params['lstm_units']),
-                    num_layers=int(params['num_lstm_layers']),
-                    output_dim=1,  # For regression
-                    dropout=params['lstm_dropout'],
-                    bidirectional=params['lstm_bidirectional']
-                )
-                
-                # Display model architecture details
-                st.write("### Model Architecture Details")
-                st.write(f"Input Dimension: {X_train.shape[2]} features")
-                st.write(f"Hidden Dimension: {params['lstm_units']} units")
-                st.write(f"Number of LSTM Layers: {params['num_lstm_layers']}")
-                st.write(f"Bidirectional: {'Yes' if params['lstm_bidirectional'] else 'No'}")
-                st.write(f"Dropout Rate: {params['lstm_dropout']}")
-                
-                # Calculate and display model parameters
-                total_params = sum(p.numel() for p in model.parameters())
-                trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-                st.write(f"Total Parameters: {total_params:,}")
-                st.write(f"Trainable Parameters: {trainable_params:,}")
-                
-                # Train model with correct parameters
-                criterion = nn.MSELoss()
-                optimizer = torch.optim.Adam(model.parameters(), lr=params['learning_rate'])
-                
-                # Training loop
-                train_losses = []
-                val_losses = []
-                
-                for epoch in range(epochs):
-                    model.train()
-                    epoch_loss = 0
-                    
-                    for i in range(0, len(X_train), batch_size):
-                        batch_X = X_train[i:i+batch_size]
-                        batch_y = y_train[i:i+batch_size]
-                        
-                        # Ensure inputs are tensors and of correct type
-                        if not isinstance(batch_X, torch.Tensor):
-                            batch_X = torch.FloatTensor(batch_X)
-                        if not isinstance(batch_y, torch.Tensor):
-                            batch_y = torch.FloatTensor(batch_y).view(-1, 1)  # Reshape target
-                        
-                        # Forward pass
-                        optimizer.zero_grad()
-                        outputs = model(batch_X)
-                        
-                        # Calculate loss
-                        loss = criterion(outputs, batch_y)
-                        
-                        # Backward pass and optimize
-                        loss.backward()
-                        optimizer.step()
-                        epoch_loss += loss.item()
-                    
-                    # Validation
-                    model.eval()
-                    with torch.no_grad():
-                        val_outputs = model(X_test)
-                        val_loss = criterion(val_outputs, y_test)
-                    
-                    train_losses.append(epoch_loss / (len(X_train) // batch_size))
-                    val_losses.append(val_loss.item())
-                    
-                    if (epoch + 1) % 5 == 0:
-                        st.write(f"Epoch [{epoch+1}/{epochs}], "
-                               f"Train Loss: {train_losses[-1]:.4f}, "
-                               f"Val Loss: {val_losses[-1]:.4f}")
-                
-                # Display final training statistics
-                st.write("### Training Statistics")
-                st.write(f"Final Training Loss: {train_losses[-1]:.4f}")
-                st.write(f"Final Validation Loss: {val_losses[-1]:.4f}")
-                
-                # Calculate and display additional metrics
-                model.eval()
-                with torch.no_grad():
-                    train_preds = model(X_train)
-                    test_preds = model(X_test)
-                    
-                    # Calculate R-squared score
-                    train_ss_res = torch.sum((y_train - train_preds) ** 2)
-                    train_ss_tot = torch.sum((y_train - torch.mean(y_train)) ** 2)
-                    train_r2 = 1 - train_ss_res / train_ss_tot
-                    
-                    test_ss_res = torch.sum((y_test - test_preds) ** 2)
-                    test_ss_tot = torch.sum((y_test - torch.mean(y_test)) ** 2)
-                    test_r2 = 1 - test_ss_res / test_ss_tot
-                    
-                    st.write("### Model Performance Metrics")
-                    st.write(f"Training R² Score: {train_r2.item():.4f}")
-                    st.write(f"Testing R² Score: {test_r2.item():.4f}")
-                    
-                    # Calculate Mean Absolute Error
-                    train_mae = torch.mean(torch.abs(y_train - train_preds))
-                    test_mae = torch.mean(torch.abs(y_test - test_preds))
-                    st.write(f"Training MAE: {train_mae.item():.4f}")
-                    st.write(f"Testing MAE: {test_mae.item():.4f}")
-                    
-                    # Calculate Root Mean Squared Error
-                    train_rmse = torch.sqrt(torch.mean((y_train - train_preds) ** 2))
-                    test_rmse = torch.sqrt(torch.mean((y_test - test_preds) ** 2))
-                    st.write(f"Training RMSE: {train_rmse.item():.4f}")
-                    st.write(f"Testing RMSE: {test_rmse.item():.4f}")
-                
-                # Plot training history
-                st.write("### Training History")
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.plot(train_losses, label='Training Loss')
-                ax.plot(val_losses, label='Validation Loss')
-                ax.set_xlabel('Epoch')
-                ax.set_ylabel('Loss')
-                ax.set_title('Training and Validation Loss')
-                ax.legend()
-                st.pyplot(fig)
-                
-                # Plot predictions vs actual values
-                st.write("### Predictions vs Actual Values")
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.scatter(y_test.cpu().numpy(), test_preds.cpu().numpy(), alpha=0.5)
-                ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-                ax.set_xlabel('Actual Values')
-                ax.set_ylabel('Predicted Values')
-                ax.set_title('Actual vs Predicted Values')
-                st.pyplot(fig)
-                
-                # Display model summary
-                st.write("### Model Summary")
-                st.write("The LSTM model has been trained with the following characteristics:")
-                st.write(f"- Input sequence length: {X_train.shape[1]}")
-                st.write(f"- Number of features per time step: {X_train.shape[2]}")
-                st.write(f"- Hidden state size: {params['lstm_units']}")
-                st.write(f"- Number of LSTM layers: {params['num_lstm_layers']}")
-                st.write(f"- Dropout rate: {params['lstm_dropout']}")
-                st.write(f"- Bidirectional: {'Yes' if params['lstm_bidirectional'] else 'No'}")
-                st.write(f"- Total parameters: {total_params:,}")
-                st.write(f"- Training epochs: {epochs}")
-                st.write(f"- Batch size: {batch_size}")
-                st.write(f"- Learning rate: {params['learning_rate']}")
-                
-                # Display performance interpretation
-                st.write("### Performance Interpretation")
-                st.write("The model's performance can be interpreted as follows:")
-                st.write(f"- R² Score: {test_r2.item():.4f} indicates that the model explains {test_r2.item()*100:.2f}% of the variance in the target variable")
-                st.write(f"- RMSE: {test_rmse.item():.4f} represents the average prediction error in the same units as the target variable")
-                st.write(f"- MAE: {test_mae.item():.4f} shows the average absolute difference between predictions and actual values")
-                
-                if test_r2.item() > 0.7:
-                    st.success("The model shows strong predictive performance!")
-                elif test_r2.item() > 0.5:
-                    st.info("The model shows moderate predictive performance.")
-                else:
-                    st.warning("The model's predictive performance could be improved. Consider:")
-                    st.write("- Increasing model complexity")
-                    st.write("- Adding more features")
-                    st.write("- Adjusting hyperparameters")
-                    st.write("- Collecting more training data")
-                
-            except Exception as e:
-                st.error(f"Error during training LSTM: {str(e)}")
-                st.write("Please check your model parameters and data format.")
-                model = None  # Reset model on error
-        
-        # Feature importance (if applicable)
-        if model is not None and hasattr(model, 'get_feature_importance'):
-            st.subheader("Feature Importance")
-            importance = model.get_feature_importance(X_test)
-            fig = px.bar(
-                x=feature_columns,
-                y=importance,
-                title='Feature Importance'
-            )
-            st.plotly_chart(fig)
-        
-    else:
-        st.warning("Please select both target and feature columns to proceed with model training.")
+        # Model selection and handling
+        if "RNN" in dl_model_type:
+            handle_rnn(data, params, X_train, X_test, y_train, y_test)
+        elif "LSTM" in dl_model_type:
+            handle_lstm(data, params, X_train, X_test, y_train, y_test)
+        elif "CNN" in dl_model_type:
+            handle_cnn(data, params, X_train, X_test, y_train, y_test)
+        elif "GRU" in dl_model_type:
+            handle_gru(data, params, X_train, X_test, y_train, y_test)
+        elif "Transformer" in dl_model_type:
+            handle_transformer(data, params, X_train, X_test, y_train, y_test)
+        elif "Autoencoder" in dl_model_type:
+            handle_autoencoder(data, params, X_train, X_test, y_train, y_test)
+        elif "GAN" in dl_model_type:
+            handle_gan(data, params, X_train, X_test, y_train, y_test)
+        else:
+            st.error(f"Unsupported model type: {dl_model_type}")
 
-def handle_cnn(data, params):
+def handle_cnn(data, params, X_train, X_test, y_train, y_test):
     st.subheader("CNN Model Configuration")
     
     # Feature and target selection
@@ -1291,336 +1076,87 @@ def handle_cnn(data, params):
                     st.error(f"Error during training: {str(e)}")
                     st.write("Please check your data format and model parameters.")
 
-def handle_rnn(data, params):
+def handle_rnn(data, params, X_train, X_test, y_train, y_test):
     st.subheader("RNN Model Configuration")
     
-    # Data Preprocessing
-    st.write("### Data Preprocessing")
+    # Model Architecture Visualization
+    st.write("### Model Architecture")
+    st.write("""
+    The RNN model consists of three main components:
     
-    # Display data types
-    st.write("#### Data Types Overview")
-    data_types = pd.DataFrame({
-        'Column': data.columns,
-        'Data Type': data.dtypes,
-        'Unique Values': data.nunique(),
-        'Missing Values': data.isnull().sum()
-    })
-    st.dataframe(data_types)
+    1. **Input Layer**: Takes sequences of features
+       - Input shape: (batch_size, sequence_length, input_dim)
+       - Each time step processes one feature vector
     
-    # Select target column
-    target_column = st.selectbox("Select target column", data.columns)
+    2. **RNN Layer**: Processes sequences with hidden states
+       - Hidden state size: {hidden_dim}
+       - Number of layers: {num_layers}
+       - Bidirectional: {bidirectional}
+       - Dropout rate: {dropout}
     
-    # Select feature columns
-    feature_columns = st.multiselect(
-        "Select feature columns",
-        [col for col in data.columns if col != target_column],
-        default=[col for col in data.columns if col != target_column]
-    )
+    3. **Dense Layer**: Produces final predictions
+       - Output dimension: 1 (for regression)
     
-    # Data type handling
-    st.write("#### Data Type Handling")
-    categorical_columns = []
-    numerical_columns = []
+    The RNN cell processes information using the following equations:
+    - Hidden state: h(t) = tanh(W_hh * h(t-1) + W_xh * x(t) + b_h)
+    - Output: y(t) = W_hy * h(t) + b_y
     
-    for col in feature_columns:
-        if data[col].dtype in ['object', 'category', 'string']:
-            categorical_columns.append(col)
-        else:
-            numerical_columns.append(col)
-    
-    if categorical_columns:
-        st.write("Categorical columns detected:", categorical_columns)
-        encoding_method = st.selectbox(
-            "Select encoding method for categorical variables",
-            ["One-Hot Encoding", "Label Encoding", "Ordinal Encoding"]
-        )
-        
-        # Show sample of categorical data
-        st.write("Sample of categorical data:")
-        st.dataframe(data[categorical_columns].head())
-    
-    if numerical_columns:
-        st.write("Numerical columns detected:", numerical_columns)
-        # Show sample of numerical data
-        st.write("Sample of numerical data:")
-        st.dataframe(data[numerical_columns].head())
-        
-        # Show basic statistics
-        st.write("Basic statistics for numerical columns:")
-        st.dataframe(data[numerical_columns].describe())
-    
-    # Data Visualization
-    st.write("#### Data Visualization")
-    
-    # Plot numerical distributions
-    if numerical_columns:
-        st.write("##### Numerical Distributions")
-        for col in numerical_columns:
-            fig = px.histogram(data, x=col, title=f'Distribution of {col}')
-            st.plotly_chart(fig)
-    
-    # Plot categorical distributions
-    if categorical_columns:
-        st.write("##### Categorical Distributions")
-        for col in categorical_columns:
-            value_counts = data[col].value_counts()
-            fig = px.bar(
-                x=value_counts.index,
-                y=value_counts.values,
-                title=f'Distribution of {col}',
-                labels={'x': col, 'y': 'Count'}
-            )
-            st.plotly_chart(fig)
-    
-    # Correlation analysis for numerical columns
-    if len(numerical_columns) > 1:
-        st.write("##### Correlation Analysis")
-        corr_matrix = data[numerical_columns].corr()
-        fig = px.imshow(
-            corr_matrix,
-            title='Correlation Matrix',
-            color_continuous_scale='RdBu'
-        )
-        st.plotly_chart(fig)
-    
-    # Sequence Configuration
-    st.write("#### Sequence Configuration")
-    sequence_length = st.slider(
-        "Sequence Length",
-        min_value=1,
-        max_value=100,
-        value=10,
-        key="sequence_length_slider"
-    )
-    
-    # Data Preprocessing
-    st.write("#### Data Preprocessing")
-    
-    # Handle categorical variables
-    categorical_columns = []
-    numerical_columns = []
-    
-    for col in feature_columns:
-        if data[col].dtype in ['object', 'category', 'string']:
-            categorical_columns.append(col)
-        else:
-            numerical_columns.append(col)
-    
-    # Create a copy of the data for preprocessing
-    X = data[feature_columns].copy()
-    y = data[target_column]
-    
-    if categorical_columns:
-        st.write("Categorical columns detected:", categorical_columns)
-        encoding_method = st.selectbox(
-            "Select encoding method for categorical variables",
-            ["One-Hot Encoding", "Label Encoding", "Ordinal Encoding"],
-            key="encoding_method_select"
-        )
-        
-        # Encode categorical variables
-        if encoding_method == "One-Hot Encoding":
-            X = pd.get_dummies(X, columns=categorical_columns)
-        elif encoding_method == "Label Encoding":
-            from sklearn.preprocessing import LabelEncoder
-            le = LabelEncoder()
-            for col in categorical_columns:
-                X[col] = le.fit_transform(X[col].astype(str))
-        elif encoding_method == "Ordinal Encoding":
-            from sklearn.preprocessing import OrdinalEncoder
-            oe = OrdinalEncoder()
-            X[categorical_columns] = oe.fit_transform(X[categorical_columns].astype(str))
-    
-    # Scale numerical features
-    if numerical_columns:
-        from sklearn.preprocessing import StandardScaler
-        scaler = StandardScaler()
-        X[numerical_columns] = scaler.fit_transform(X[numerical_columns])
-    
-    # Create sequences
-    def create_sequences(data, sequence_length):
-        sequences = []
-        for i in range(len(data) - sequence_length):
-            sequences.append(data[i:(i + sequence_length)])
-        return np.array(sequences)
-    
-    # Convert input data to numpy array first
-    X_array = np.array(X.values, dtype=np.float32)
-    y_array = np.array(y.values, dtype=np.int64)  # Convert target to int64
-    
-    # Create sequences
-    X_sequences = create_sequences(X_array, sequence_length)
-    y_sequences = y_array[sequence_length:]
-    
-    # Split data
-    from sklearn.model_selection import train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_sequences, y_sequences, test_size=0.2, random_state=42
-    )
-    
-    # Ensure proper shape for RNN input
-    if len(X_train.shape) == 2:
-        X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
-        X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
-    
-    # Convert to PyTorch tensors
-    import torch
-    X_train = torch.FloatTensor(X_train)  # Keep input as float
-    X_test = torch.FloatTensor(X_test)    # Keep input as float
-    y_train = torch.FloatTensor(y_train).view(-1, 1)  # Reshape target to [batch_size, 1]
-    y_test = torch.FloatTensor(y_test).view(-1, 1)    # Reshape target to [batch_size, 1]
-    
-    # Display data shapes and types
-    st.write("#### Data Shapes and Types")
-    data_info = pd.DataFrame({
-        'Data': ['X_train', 'X_test', 'y_train', 'y_test'],
-        'Shape': [str(X_train.shape), str(X_test.shape), str(y_train.shape), str(y_test.shape)],
-        'Type': [str(X_train.dtype), str(X_test.dtype), str(y_train.dtype), str(y_test.dtype)]
-    })
-    st.dataframe(data_info)
-    
-    # Display target variable statistics
-    st.write("#### Target Variable Statistics")
-    target_stats = pd.DataFrame({
-        'Statistic': ['Min', 'Max', 'Mean', 'Std'],
-        'Value': [
-            float(y_train.min()),
-            float(y_train.max()),
-            float(y_train.mean()),
-            float(y_train.std())
-        ]
-    })
-    st.dataframe(target_stats)
-    
-    # Display tensor information
-    st.write("Tensor Information:")
-    tensor_info = pd.DataFrame({
-        'Tensor': ['X_train', 'X_test', 'y_train', 'y_test'],
-        'Shape': [str(X_train.shape), str(X_test.shape), str(y_train.shape), str(y_test.shape)],
-        'Type': [str(X_train.dtype), str(X_test.dtype), str(y_train.dtype), str(y_test.dtype)]
-    })
-    st.dataframe(tensor_info)
-    
-    # Train model
-    history = None
-    model = None  # Initialize model variable
-    with st.spinner("Training RNN..."):
-        try:
-            # Convert training parameters to proper types
-            epochs = int(params['epochs'])
-            batch_size = int(params['batch_size'])
-            
-            # Create RNN model
-            rnn_model = RNNModel(
-                input_dim=int(X_train.shape[2]),
-                hidden_dim=int(params['hidden_units']),
-                num_layers=int(params['num_rnn_layers']),
-                num_classes=int(len(np.unique(y)))  # Number of unique classes
-            )
-            
-            # Train model with correct parameters
-            history = rnn_model.train(
-                X_train,  # First positional argument
-                y_train,  # Second positional argument
-                epochs=epochs,
-                batch_size=batch_size
-            )
-            
-            # Display training progress
-            st.write("Training completed successfully!")
-            st.write(f"Final loss: {history.history['loss'][-1]:.4f}")
-            if 'val_loss' in history.history:
-                st.write(f"Final validation loss: {history.history['val_loss'][-1]:.4f}")
-            
-        except Exception as e:
-            st.error(f"Error during training: {str(e)}")
-            st.write("Please check your model parameters and data format.")
-            model = None  # Reset model on error
-    
-    # Visualizations
-    st.subheader("Training Results")
-    
-    # Plot training history
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
-    
-    # Loss plot
-    ax1.plot(history.history['loss'], label='Training Loss')
-    ax1.plot(history.history['val_loss'], label='Validation Loss')
-    ax1.set_title('Model Loss')
-    ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Loss')
-    ax1.legend()
-    
-    # Accuracy plot (if available)
-    if 'accuracy' in history.history:
-        ax2.plot(history.history['accuracy'], label='Training Accuracy')
-        ax2.plot(history.history['val_accuracy'], label='Validation Accuracy')
-        ax2.set_title('Model Accuracy')
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('Accuracy')
-        ax2.legend()
-    
-    st.pyplot(fig)
-    
-    # Model predictions
-    st.subheader("Model Predictions")
-    y_pred = rnn_model.predict(X_test)
-    
-    # Plot predictions vs actual
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        y=y_test.flatten(),
-        mode='lines',
-        name='Actual'
+    Where:
+    - W_hh: Hidden-to-hidden weights
+    - W_xh: Input-to-hidden weights
+    - W_hy: Hidden-to-output weights
+    - b_h, b_y: Bias terms
+    - h(t-1): Previous hidden state
+    - x(t): Current input
+    - h(t): Current hidden state
+    - y(t): Current output
+    """.format(
+        hidden_dim=params['hidden_units'],
+        num_layers=params['num_rnn_layers'],
+        bidirectional=params['bidirectional'],
+        dropout=params['dropout_rate']
     ))
-    fig.add_trace(go.Scatter(
-        y=y_pred.flatten(),
-        mode='lines',
-        name='Predicted'
-    ))
-    fig.update_layout(
-        title='Actual vs Predicted Values',
-        xaxis_title='Sample',
-        yaxis_title='Value'
-    )
-    st.plotly_chart(fig)
     
-    # Feature importance (if applicable)
-    if model is not None and hasattr(rnn_model, 'get_feature_importance'):
-        st.subheader("Feature Importance")
-        importance = rnn_model.get_feature_importance(X_test)
-        fig = px.bar(
-            x=feature_columns,
-            y=importance,
-            title='Feature Importance'
-        )
-        st.plotly_chart(fig)
+    # Interactive RNN Cell Visualization
+    st.write("### RNN Cell Visualization")
+    st.write("""
+    The RNN cell processes information through time using the following mechanism:
     
-
-def handle_lstm(data, params):
-    st.subheader("LSTM Model Implementation")
+    1. **Input Processing**:
+       - Each time step receives an input vector x(t)
+       - The input is combined with the previous hidden state h(t-1)
+       - A non-linear transformation (tanh) is applied
+    
+    2. **Hidden State Update**:
+       - The hidden state h(t) captures information from previous time steps
+       - It serves as the memory of the network
+       - The update is controlled by learnable weights W_hh and W_xh
+    
+    3. **Output Generation**:
+       - The hidden state h(t) is transformed into the output y(t)
+       - For sequence prediction, we use the last time step's output
+       - The transformation is controlled by weights W_hy
+    """)
     
     # Initialize model with correct parameters
     input_dim = X_train.shape[2]
-    hidden_dim = params['lstm_units']
-    num_layers = params['num_lstm_layers']  # Use the correct parameter name
-    output_dim = 1  # For regression
-    dropout = params['lstm_dropout']
-    bidirectional = params['lstm_bidirectional']
+    hidden_dim = params['hidden_units']
+    num_layers = params['num_rnn_layers']
+    output_dim = 1
+    dropout = params['dropout_rate']
+    bidirectional = params['bidirectional']
     
-    model = LSTMModel(input_dim, hidden_dim, num_layers, output_dim, dropout, bidirectional)
+    # Create RNN model
+    model = RNNModel(input_dim, hidden_dim, num_layers, output_dim, dropout, bidirectional)
     
-    # Step 6: Training Configuration
-    st.write("### Step 6: Training Configuration")
-    
-    # Loss function
+    # Training configuration
     criterion = nn.MSELoss()
-    
-    # Optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=params['learning_rate'])
     
-    # Step 7: Training Process
-    st.write("### Step 7: Training Process")
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5)
+    
+    # Training process
     num_epochs = params['epochs']
     batch_size = params['batch_size']
     
@@ -1634,87 +1170,302 @@ def handle_lstm(data, params):
         with st.spinner("Training in progress..."):
             train_losses = []
             val_losses = []
+            learning_rates = []
+            batch_losses = []
             
             for epoch in range(num_epochs):
                 model.train()
                 epoch_loss = 0
+                batch_loss_history = []
                 
                 for batch_X, batch_y in train_loader:
-                    # Ensure inputs are tensors and of correct type
-                    if not isinstance(batch_X, torch.Tensor):
-                        batch_X = torch.FloatTensor(batch_X)
-                    if not isinstance(batch_y, torch.Tensor):
-                        batch_y = torch.FloatTensor(batch_y).view(-1, 1)  # Reshape target
-                    
-                    # Forward pass
                     optimizer.zero_grad()
                     outputs = model(batch_X)
-                    
-                    # Calculate loss
                     loss = criterion(outputs, batch_y)
-                    
-                    # Backward pass and optimize
                     loss.backward()
                     optimizer.step()
                     epoch_loss += loss.item()
+                    batch_loss_history.append(loss.item())
+                
+                # Store metrics
+                train_losses.append(epoch_loss / len(train_loader))
+                batch_losses.extend(batch_loss_history)
                 
                 # Validation
                 model.eval()
                 with torch.no_grad():
-                    # Ensure validation data is tensors
-                    if not isinstance(X_test, torch.Tensor):
-                        X_test = torch.FloatTensor(X_test)
-                    if not isinstance(y_test, torch.Tensor):
-                        y_test = torch.FloatTensor(y_test).view(-1, 1)    # Reshape target to [batch_size, 1]
-                    
                     val_outputs = model(X_test)
                     val_loss = criterion(val_outputs, y_test)
+                    val_losses.append(val_loss.item())
                 
-                train_losses.append(epoch_loss / len(train_loader))
-                val_losses.append(val_loss.item())
+                # Update learning rate
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                learning_rates.append(current_lr)
                 
-                if (epoch + 1) % 5 == 0:
-                    st.write(f"Epoch [{epoch+1}/{num_epochs}], "
-                           f"Train Loss: {train_losses[-1]:.4f}, "
-                           f"Val Loss: {val_losses[-1]:.4f}")
+                # Display progress
+                st.write(f"Epoch {epoch+1}/{num_epochs}")
+                st.write(f"Training Loss: {train_losses[-1]:.4f}")
+                st.write(f"Validation Loss: {val_losses[-1]:.4f}")
+                st.write(f"Learning Rate: {current_lr:.6f}")
+                
+                # Plot training progress
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+                
+                # Plot loss curves
+                ax1.plot(train_losses, label='Training Loss')
+                ax1.plot(val_losses, label='Validation Loss')
+                ax1.set_title('Loss Curves')
+                ax1.set_xlabel('Epoch')
+                ax1.set_ylabel('Loss')
+                ax1.legend()
+                
+                # Plot learning rate
+                ax2.plot(learning_rates)
+                ax2.set_title('Learning Rate Schedule')
+                ax2.set_xlabel('Epoch')
+                ax2.set_ylabel('Learning Rate')
+                
+                st.pyplot(fig)
+                plt.close()
+                
+                # Early stopping check
+                if len(val_losses) > 10 and val_losses[-1] > min(val_losses[:-10]):
+                    st.write("Early stopping triggered")
+                    break
             
-            # Plot training history
-            st.write("### Training History")
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(train_losses, label='Training Loss')
-            ax.plot(val_losses, label='Validation Loss')
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel('Loss')
-            ax.set_title('Training and Validation Loss')
-            ax.legend()
-            st.pyplot(fig)
-            
-            # Step 8: Model Evaluation
-            st.write("### Step 8: Model Evaluation")
+            # Final model evaluation
+            st.write("### Model Evaluation")
             model.eval()
             with torch.no_grad():
-                y_pred = model(X_test)
-                mse = criterion(y_pred, y_test)
+                predictions = model(X_test)
+                mse = criterion(predictions, y_test)
                 rmse = torch.sqrt(mse)
                 
-                st.write("Evaluation Metrics:")
-                st.write(f"Mean Squared Error (MSE): {mse.item():.4f}")
-                st.write(f"Root Mean Squared Error (RMSE): {rmse.item():.4f}")
+                # Calculate additional metrics
+                mae = torch.mean(torch.abs(predictions - y_test))
+                r2 = 1 - mse / torch.var(y_test)
                 
-                # Plot predictions vs actual
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.scatter(y_test.numpy(), y_pred.numpy(), alpha=0.5)
-                ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-                ax.set_xlabel('Actual Values')
-                ax.set_ylabel('Predicted Values')
-                ax.set_title('Actual vs Predicted Values')
-                st.pyplot(fig)
+                st.write(f"Final MSE: {mse.item():.4f}")
+                st.write(f"Final RMSE: {rmse.item():.4f}")
+                st.write(f"Final MAE: {mae.item():.4f}")
+                st.write(f"R² Score: {r2.item():.4f}")
             
-            # Step 9: Model Saving
-            st.write("### Step 9: Model Saving")
-            if st.button("Save Model"):
-                torch.save(model.state_dict(), 'lstm_model.pth')
-                st.success("Model saved successfully!")
+            # Plot predictions vs actual
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.scatter(y_test.numpy(), predictions.numpy(), alpha=0.5)
+            ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+            ax.set_xlabel('Actual Values')
+            ax.set_ylabel('Predicted Values')
+            ax.set_title('Actual vs Predicted Values')
+            st.pyplot(fig)
+            plt.close()
+            
+            # Save model
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'learning_rates': learning_rates
+            }, 'rnn_model.pth')
+            
+            st.success("Training completed and model saved!")
+
+def handle_lstm(data, params, X_train, X_test, y_train, y_test):
+    st.subheader("LSTM Model Configuration")
+    
+    # Model Architecture Visualization
+    st.write("### Model Architecture")
+    st.write("""
+    The LSTM model consists of three main components:
+    
+    1. **Input Layer**: Takes sequences of features
+       - Input shape: (batch_size, sequence_length, input_dim)
+       - Each time step processes one feature vector
+    
+    2. **LSTM Layer**: Processes sequences with memory cells
+       - Hidden state size: {hidden_dim}
+       - Number of layers: {num_layers}
+       - Bidirectional: {bidirectional}
+       - Dropout rate: {dropout}
+    
+    3. **Dense Layer**: Produces final predictions
+       - Output dimension: 1 (for regression)
+    
+    The LSTM cell processes information using the following equations:
+    - Forget Gate: f(t) = σ(W_f * [h(t-1), x(t)] + b_f)
+    - Input Gate: i(t) = σ(W_i * [h(t-1), x(t)] + b_i)
+    - Cell State: C̃(t) = tanh(W_C * [h(t-1), x(t)] + b_C)
+    - Cell Update: C(t) = f(t) * C(t-1) + i(t) * C̃(t)
+    - Output Gate: o(t) = σ(W_o * [h(t-1), x(t)] + b_o)
+    - Hidden State: h(t) = o(t) * tanh(C(t))
+    
+    Where:
+    - σ: Sigmoid activation
+    - W_f, W_i, W_C, W_o: Weight matrices
+    - b_f, b_i, b_C, b_o: Bias terms
+    """.format(
+        hidden_dim=params['hidden_units'],
+        num_layers=params['num_lstm_layers'],
+        bidirectional=params['bidirectional'],
+        dropout=params['dropout_rate']
+    ))
+    
+    # Interactive LSTM Cell Visualization
+    st.write("### LSTM Cell Visualization")
+    st.write("""
+    The LSTM cell processes information through time using the following mechanism:
+    
+    1. **Gate Operations**:
+       - Forget Gate: Decides what information to discard
+       - Input Gate: Decides what new information to store
+       - Output Gate: Decides what information to output
+    
+    2. **Memory Cell**:
+       - Maintains long-term dependencies
+       - Updates based on gate activations
+       - Preserves information across time steps
+    
+    3. **Information Flow**:
+       - Input → Gates → Memory Cell → Output
+       - Selective information processing
+       - Adaptive memory management
+    """)
+    
+    # Initialize model with correct parameters
+    input_dim = X_train.shape[2]
+    hidden_dim = params['hidden_units']
+    num_layers = params['num_lstm_layers']
+    output_dim = 1
+    dropout = params['dropout_rate']
+    bidirectional = params['bidirectional']
+    
+    # Create LSTM model
+    model = LSTMModel(input_dim, hidden_dim, num_layers, output_dim, dropout, bidirectional)
+    
+    # Training configuration
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=params['learning_rate'])
+    
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5)
+    
+    # Training process
+    num_epochs = params['epochs']
+    batch_size = params['batch_size']
+    
+    # Create data loaders
+    from torch.utils.data import DataLoader, TensorDataset
+    train_data = TensorDataset(X_train, y_train)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    
+    # Training loop
+    if st.button("Start Training"):
+        with st.spinner("Training in progress..."):
+            train_losses = []
+            val_losses = []
+            learning_rates = []
+            batch_losses = []
+            
+            for epoch in range(num_epochs):
+                model.train()
+                epoch_loss = 0
+                batch_loss_history = []
+                
+                for batch_X, batch_y in train_loader:
+                    optimizer.zero_grad()
+                    outputs = model(batch_X)
+                    loss = criterion(outputs, batch_y)
+                    loss.backward()
+                    optimizer.step()
+                    epoch_loss += loss.item()
+                    batch_loss_history.append(loss.item())
+                
+                # Store metrics
+                train_losses.append(epoch_loss / len(train_loader))
+                batch_losses.extend(batch_loss_history)
+                
+                # Validation
+                model.eval()
+                with torch.no_grad():
+                    val_outputs = model(X_test)
+                    val_loss = criterion(val_outputs, y_test)
+                    val_losses.append(val_loss.item())
+                
+                # Update learning rate
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                learning_rates.append(current_lr)
+                
+                # Display progress
+                st.write(f"Epoch {epoch+1}/{num_epochs}")
+                st.write(f"Training Loss: {train_losses[-1]:.4f}")
+                st.write(f"Validation Loss: {val_losses[-1]:.4f}")
+                st.write(f"Learning Rate: {current_lr:.6f}")
+                
+                # Plot training progress
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+                
+                # Plot loss curves
+                ax1.plot(train_losses, label='Training Loss')
+                ax1.plot(val_losses, label='Validation Loss')
+                ax1.set_title('Loss Curves')
+                ax1.set_xlabel('Epoch')
+                ax1.set_ylabel('Loss')
+                ax1.legend()
+                
+                # Plot learning rate
+                ax2.plot(learning_rates)
+                ax2.set_title('Learning Rate Schedule')
+                ax2.set_xlabel('Epoch')
+                ax2.set_ylabel('Learning Rate')
+                
+                st.pyplot(fig)
+                plt.close()
+                
+                # Early stopping check
+                if len(val_losses) > 10 and val_losses[-1] > min(val_losses[:-10]):
+                    st.write("Early stopping triggered")
+                    break
+            
+            # Final model evaluation
+            st.write("### Model Evaluation")
+            model.eval()
+            with torch.no_grad():
+                predictions = model(X_test)
+                mse = criterion(predictions, y_test)
+                rmse = torch.sqrt(mse)
+                
+                # Calculate additional metrics
+                mae = torch.mean(torch.abs(predictions - y_test))
+                r2 = 1 - mse / torch.var(y_test)
+                
+                st.write(f"Final MSE: {mse.item():.4f}")
+                st.write(f"Final RMSE: {rmse.item():.4f}")
+                st.write(f"Final MAE: {mae.item():.4f}")
+                st.write(f"R² Score: {r2.item():.4f}")
+            
+            # Plot predictions vs actual
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.scatter(y_test.numpy(), predictions.numpy(), alpha=0.5)
+            ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+            ax.set_xlabel('Actual Values')
+            ax.set_ylabel('Predicted Values')
+            ax.set_title('Actual vs Predicted Values')
+            st.pyplot(fig)
+            plt.close()
+            
+            # Save model
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'learning_rates': learning_rates
+            }, 'lstm_model.pth')
+            
+            st.success("Training completed and model saved!")
 
 def handle_gru(data, params):
     st.subheader("GRU Model Configuration")
@@ -1741,30 +1492,354 @@ def handle_gru(data, params):
             st.subheader("Model Architecture")
             st.image(plot_model_architecture(gru_model.model))
 
-def handle_transformer(data, params):
-    st.subheader("Transformer Model Configuration")
+def handle_transformer(data, params, X_train, X_test, y_train, y_test):
+    st.subheader("Transformer Model Implementation")
     
-    # Model parameters
-    input_dim = st.sidebar.number_input("Input Dimension", min_value=1, value=10)
-    hidden_dim = st.sidebar.number_input("Hidden Dimension", min_value=1, value=64)
-    num_layers = st.sidebar.number_input("Number of Layers", min_value=1, value=2)
-    num_classes = st.sidebar.number_input("Number of Classes", min_value=2, value=10)
+    # 1. Model Architecture Explanation
+    st.write("### 1. Transformer Architecture Overview")
+    st.write("""
+    The Transformer model consists of several key components:
     
-    # Create and train model
-    if st.sidebar.button("Train Transformer"):
-        transformer_model = TransformerModel(input_dim, hidden_dim, num_layers, num_classes)
-        
-        # Training parameters
-        epochs = st.sidebar.slider("Epochs", 1, 50, 10)
-        batch_size = st.sidebar.slider("Batch Size", 16, 128, 32)
-        
-        # Train model
-        with st.spinner("Training Transformer..."):
-            transformer_model.train(data, epochs=epochs, batch_size=batch_size)
+    1. **Input Embedding Layer**: Converts input sequences into dense vectors
+    2. **Positional Encoding**: Adds positional information to the embeddings
+    3. **Encoder Layers**: Each containing:
+       - Multi-Head Self-Attention
+       - Feed-Forward Network
+       - Layer Normalization
+       - Residual Connections
+    4. **Decoder Layers**: Similar to encoder but with:
+       - Masked Multi-Head Self-Attention
+       - Encoder-Decoder Attention
+    5. **Output Layer**: Produces final predictions
+    
+    For our regression task, we'll use a simplified version focusing on the encoder part.
+    """)
+    
+    # 2. Model Parameters Configuration
+    st.write("### 2. Model Parameters")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        params['d_model'] = st.number_input(
+            "Model Dimension (d_model)",
+            min_value=32,
+            max_value=512,
+            value=128,
+            step=32,
+            help="Dimension of the model's hidden states"
+        )
+        params['nhead'] = st.number_input(
+            "Number of Attention Heads",
+            min_value=1,
+            max_value=16,
+            value=4,
+            help="Number of parallel attention heads"
+        )
+        params['num_encoder_layers'] = st.number_input(
+            "Number of Encoder Layers",
+            min_value=1,
+            max_value=6,
+            value=2,
+            help="Number of transformer encoder layers"
+        )
+    
+    with col2:
+        params['dim_feedforward'] = st.number_input(
+            "Feed-Forward Dimension",
+            min_value=64,
+            max_value=2048,
+            value=512,
+            step=64,
+            help="Dimension of the feed-forward network"
+        )
+        params['dropout'] = st.slider(
+            "Dropout Rate",
+            min_value=0.0,
+            max_value=0.5,
+            value=0.1,
+            step=0.05,
+            help="Dropout probability"
+        )
+        params['activation'] = st.selectbox(
+            "Activation Function",
+            ["relu", "gelu"],
+            help="Activation function in the feed-forward network"
+        )
+    
+    # 3. Model Implementation
+    st.write("### 3. Model Implementation")
+    st.write("""
+    ```python
+    class TransformerModel(nn.Module):
+        def __init__(self, input_dim, d_model, nhead, num_encoder_layers, 
+                     dim_feedforward, dropout, activation):
+            super().__init__()
             
-            # Visualizations
-            st.subheader("Model Architecture")
-            st.image(plot_model_architecture(transformer_model.model))
+            # Input embedding layer
+            self.embedding = nn.Linear(input_dim, d_model)
+            
+            # Positional encoding
+            self.pos_encoder = PositionalEncoding(d_model, dropout)
+            
+            # Transformer encoder
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=dim_feedforward,
+                dropout=dropout,
+                activation=activation
+            )
+            self.transformer_encoder = nn.TransformerEncoder(
+                encoder_layer,
+                num_layers=num_encoder_layers
+            )
+            
+            # Output layer
+            self.fc = nn.Linear(d_model, 1)
+            
+        def forward(self, x):
+            # Input embedding
+            x = self.embedding(x)
+            
+            # Add positional encoding
+            x = self.pos_encoder(x)
+            
+            # Transformer encoder
+            x = self.transformer_encoder(x)
+            
+            # Take the last time step's output
+            x = x[:, -1, :]
+            
+            # Final prediction
+            return self.fc(x)
+    ```
+    """)
+    
+    # 4. Positional Encoding Explanation
+    st.write("### 4. Positional Encoding")
+    st.write("""
+    Positional encoding adds information about the position of each token in the sequence:
+    
+    ```python
+    class PositionalEncoding(nn.Module):
+        def __init__(self, d_model, dropout=0.1):
+            super().__init__()
+            self.dropout = nn.Dropout(p=dropout)
+            self.d_model = d_model
+            
+            # Create positional encodings on demand
+            self.register_buffer('pe', None)
+            
+        def _create_pe(self, max_len):
+            position = torch.arange(max_len).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, self.d_model, 2) * (-math.log(10000.0) / self.d_model))
+            pe = torch.zeros(max_len, 1, self.d_model)
+            pe[:, 0, 0::2] = torch.sin(position * div_term)
+            pe[:, 0, 1::2] = torch.cos(position * div_term)
+            return pe
+            
+        def forward(self, x):
+            # Get sequence length
+            seq_len = x.size(0)
+            
+            # Create or update positional encodings if needed
+            if self.pe is None or self.pe.size(0) < seq_len:
+                self.pe = self._create_pe(seq_len)
+                
+            # Add positional encoding
+            x = x + self.pe[:seq_len]
+            return self.dropout(x)
+    ```
+    
+    This creates a unique pattern for each position using sine and cosine functions of different frequencies.
+    """)
+    
+    # 5. Training Process
+    st.write("### 5. Training Process")
+    if st.button("Start Training"):
+        with st.spinner("Training in progress..."):
+            # Initialize model
+            model = TransformerModel(
+                input_dim=X_train.shape[2],
+                d_model=params['d_model'],
+                nhead=params['nhead'],
+                num_encoder_layers=params['num_encoder_layers'],
+                dim_feedforward=params['dim_feedforward'],
+                dropout=params['dropout'],
+                activation=params['activation']
+            )
+            
+            # Training configuration
+            criterion = nn.MSELoss()
+            optimizer = torch.optim.Adam(model.parameters(), lr=params['learning_rate'])
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, 'min', patience=5, factor=0.5
+            )
+            
+            # Training metrics
+            train_losses = []
+            val_losses = []
+            learning_rates = []
+            
+            # Training loop
+            for epoch in range(params['epochs']):
+                model.train()
+                optimizer.zero_grad()
+                
+                # Forward pass
+                outputs = model(X_train)
+                loss = criterion(outputs, y_train)
+                
+                # Backward pass
+                loss.backward()
+                optimizer.step()
+                
+                # Validation
+                model.eval()
+                with torch.no_grad():
+                    val_outputs = model(X_test)
+                    val_loss = criterion(val_outputs, y_test)
+                
+                # Update learning rate
+                scheduler.step(val_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                
+                # Store metrics
+                train_losses.append(loss.item())
+                val_losses.append(val_loss.item())
+                learning_rates.append(current_lr)
+                
+                if (epoch + 1) % 5 == 0:
+                    st.write(f"Epoch [{epoch+1}/{params['epochs']}], "
+                           f"Train Loss: {loss.item():.4f}, "
+                           f"Val Loss: {val_loss.item():.4f}, "
+                           f"LR: {current_lr:.6f}")
+            
+            # 6. Training Analysis
+            st.write("### 6. Training Analysis")
+            
+            # Loss curves
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+            ax1.plot(train_losses, label='Training Loss')
+            ax1.plot(val_losses, label='Validation Loss')
+            ax1.set_title('Training and Validation Loss')
+            ax1.set_xlabel('Epoch')
+            ax1.set_ylabel('Loss')
+            ax1.legend()
+            
+            # Learning rate schedule
+            ax2.plot(learning_rates)
+            ax2.set_title('Learning Rate Schedule')
+            ax2.set_xlabel('Epoch')
+            ax2.set_ylabel('Learning Rate')
+            st.pyplot(fig)
+            
+            # 7. Model Evaluation
+            st.write("### 7. Model Evaluation")
+            model.eval()
+            with torch.no_grad():
+                y_pred = model(X_test)
+                
+                # Calculate metrics
+                mse = criterion(y_pred, y_test)
+                rmse = torch.sqrt(mse)
+                mae = torch.mean(torch.abs(y_pred - y_test))
+                
+                # R² Score
+                ss_res = torch.sum((y_test - y_pred) ** 2)
+                ss_tot = torch.sum((y_test - torch.mean(y_test)) ** 2)
+                r2 = 1 - ss_res / ss_tot
+                
+                # Explained Variance
+                explained_variance = 1 - torch.var(y_test - y_pred) / torch.var(y_test)
+                
+                # Display metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("MSE", f"{mse.item():.4f}")
+                    st.metric("RMSE", f"{rmse.item():.4f}")
+                with col2:
+                    st.metric("MAE", f"{mae.item():.4f}")
+                    st.metric("R² Score", f"{r2.item():.4f}")
+                with col3:
+                    st.metric("Explained Variance", f"{explained_variance.item():.4f}")
+            
+            # 8. Prediction Analysis
+            st.write("### 8. Prediction Analysis")
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+            
+            # Actual vs Predicted
+            ax1.scatter(y_test.numpy(), y_pred.numpy(), alpha=0.5)
+            ax1.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+            ax1.set_xlabel('Actual Values')
+            ax1.set_ylabel('Predicted Values')
+            ax1.set_title('Actual vs Predicted Values')
+            
+            # Residuals Plot
+            residuals = y_test - y_pred
+            ax2.scatter(y_pred.numpy(), residuals.numpy(), alpha=0.5)
+            ax2.axhline(y=0, color='r', linestyle='--')
+            ax2.set_xlabel('Predicted Values')
+            ax2.set_ylabel('Residuals')
+            ax2.set_title('Residuals Analysis')
+            st.pyplot(fig)
+            
+            # 9. Attention Visualization
+            st.write("### 9. Attention Visualization")
+            try:
+                # Get attention weights from the first encoder layer
+                attention_weights = model.transformer_encoder.layers[0].self_attn.attn_weights
+                
+                # Plot attention matrix for a sample sequence
+                fig, ax = plt.subplots(figsize=(10, 8))
+                im = ax.imshow(attention_weights[0].mean(dim=0).detach().numpy(),
+                             cmap='viridis')
+                ax.set_title('Attention Weights (First Head)')
+                ax.set_xlabel('Key Position')
+                ax.set_ylabel('Query Position')
+                plt.colorbar(im)
+                st.pyplot(fig)
+            except Exception as e:
+                st.warning(f"Could not visualize attention weights: {str(e)}")
+            
+            # 10. Model Interpretation
+            st.write("### 10. Model Interpretation")
+            st.write("""
+            #### Key Insights:
+            
+            1. **Architecture Design**:
+               - The model uses self-attention to capture dependencies between different time steps
+               - Positional encoding helps maintain sequence order information
+               - Multiple encoder layers allow for hierarchical feature learning
+            
+            2. **Training Dynamics**:
+               - The loss curves show how well the model is learning
+               - Learning rate scheduling helps fine-tune the model
+            
+            3. **Performance Metrics**:
+               - R² score indicates how well the model explains the variance
+               - RMSE and MAE provide different perspectives on prediction errors
+            
+            4. **Attention Patterns**:
+               - The attention visualization shows how the model focuses on different parts of the sequence
+               - This helps understand which time steps are most relevant for predictions
+            
+            5. **Residual Analysis**:
+               - The residuals plot helps identify systematic prediction errors
+               - This can guide improvements in model architecture or training
+            """)
+            
+            # 11. Model Saving
+            st.write("### 11. Model Saving")
+            if st.button("Save Model"):
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'train_losses': train_losses,
+                    'val_losses': val_losses,
+                    'params': params
+                }, 'transformer_model.pth')
+                st.success("Model saved successfully!")
 
 def handle_autoencoder(data, params):
     st.subheader("Autoencoder Configuration")
@@ -2281,6 +2356,119 @@ def handle_nlp_text(text_content, nlp_model_type, params):
         st.plotly_chart(fig)
     else:
         st.warning("No sentiments could be analyzed. The text might be too short or contain unsupported characters.")
+
+def handle_nlp(data):
+    st.subheader("NLP Model Configuration")
+    
+    # Text preprocessing options
+    st.write("### Text Preprocessing")
+    text_column = st.selectbox("Select text column", data.columns)
+    
+    if text_column:
+        # Initialize NLP components
+        preprocessor = TextPreprocessor()
+        sentiment_analyzer = SentimentAnalyzer()
+        word_freq_analyzer = WordFrequencyAnalyzer()
+        
+        # Display sample text
+        st.write("Sample text from the dataset:")
+        st.write(data[text_column].head())
+        
+        # Text cleaning options
+        st.write("#### Text Cleaning Options")
+        remove_numbers = st.checkbox("Remove numbers", value=True)
+        remove_special_chars = st.checkbox("Remove special characters", value=True)
+        lowercase = st.checkbox("Convert to lowercase", value=True)
+        
+        # Tokenization options
+        st.write("#### Tokenization Options")
+        tokenization_method = st.selectbox(
+            "Tokenization Method",
+            ["Word", "Sentence", "Both"]
+        )
+        
+        # Stopword options
+        st.write("#### Stopword Options")
+        remove_stopwords = st.checkbox("Remove stopwords", value=True)
+        custom_stopwords = st.text_area(
+            "Custom stopwords (one per line)",
+            value=""
+        )
+        
+        # Word normalization
+        st.write("#### Word Normalization")
+        normalization_method = st.selectbox(
+            "Normalization Method",
+            ["Lemmatization", "Stemming"]
+        )
+        
+        # Process text
+        if st.button("Process Text"):
+            with st.spinner("Processing text..."):
+                # Basic text cleaning
+                text = data[text_column].astype(str)
+                cleaned_text = preprocessor.clean_text(
+                    text,
+                    remove_numbers=remove_numbers,
+                    remove_special_chars=remove_special_chars,
+                    lowercase=lowercase
+                )
+                
+                # Tokenization
+                tokens = preprocessor.tokenize(cleaned_text, method=tokenization_method.lower())
+                
+                # Stopword removal
+                if remove_stopwords:
+                    tokens = preprocessor.remove_stopwords(tokens, custom_stopwords)
+                
+                # Word normalization
+                tokens = preprocessor.normalize_words(tokens, method=normalization_method.lower())
+                
+                # Display results
+                st.write("### Processed Text")
+                if tokenization_method in ["Word", "Both"]:
+                    st.write("First 5 documents (word tokens):")
+                    st.write(tokens.head())
+                
+                # Word frequency analysis
+                st.write("### Word Frequency Analysis")
+                if tokenization_method in ["Word", "Both"]:
+                    word_freq = word_freq_analyzer.analyze(tokens)
+                    
+                    # Display top 20 most common words
+                    st.write("Top 20 most common words:")
+                    fig = word_freq_analyzer.plot_word_frequency(word_freq)
+                    st.plotly_chart(fig)
+                    
+                    # Word cloud
+                    st.write("### Word Cloud")
+                    fig = word_freq_analyzer.generate_word_cloud(word_freq)
+                    st.pyplot(fig)
+                
+                # Sentiment analysis
+                st.write("### Sentiment Analysis")
+                sentiments = sentiment_analyzer.analyze(cleaned_text)
+                
+                if not sentiments.empty:
+                    st.write("Sentiment distribution:")
+                    sentiment_counts = sentiments['label'].value_counts()
+                    fig = px.pie(values=sentiment_counts.values, names=sentiment_counts.index, title='Sentiment Distribution')
+                    st.plotly_chart(fig)
+                    
+                    st.write("Sentiment scores:")
+                    fig = px.histogram(sentiments, x='score', color='label', title='Sentiment Score Distribution')
+                    st.plotly_chart(fig)
+                else:
+                    st.warning("No sentiments could be analyzed. The text might be too short or contain unsupported characters.")
+                
+                # Save processed data
+                if st.button("Save Processed Data"):
+                    processed_data = pd.DataFrame({
+                        'original_text': data[text_column],
+                        'processed_tokens': tokens
+                    })
+                    processed_data.to_csv('processed_text_data.csv', index=False)
+                    st.success("Processed data saved successfully!")
 
 if __name__ == "__main__":
     main() 
