@@ -1157,6 +1157,260 @@ def handle_rnn(data, params, X_train, X_test, y_train, y_test):
        - The transformation is controlled by weights W_hy
     """)
     
+    # Add detailed explanation of the visualization
+    st.write("""
+    #### Understanding the Visualization
+    
+    The interactive visualization below shows how an RNN processes sequential data:
+    
+    1. **Input Nodes (Blue)**:
+       - Represent the input features at each time step
+       - Each blue node is a feature in the input vector
+       - The number of input nodes equals the input dimension
+    
+    2. **Hidden State Nodes (Red)**:
+       - Represent the memory of the network
+       - Each red node is a dimension in the hidden state
+       - The number of hidden nodes equals the hidden dimension
+       - Hidden states are updated at each time step
+    
+    3. **Connections (Gray Lines)**:
+       - Input to Hidden: Show how input features influence the hidden state
+       - Hidden to Hidden: Show how information flows through time
+       - The thickness of lines represents the strength of connections
+    
+    4. **Time Steps (X-axis)**:
+       - Each column represents a time step in the sequence
+       - Information flows from left to right
+       - The hidden state at each step depends on:
+         - Current input
+         - Previous hidden state
+    
+    5. **Node Index (Y-axis)**:
+       - Shows the position of each node in the input/hidden vectors
+       - Input nodes are at the bottom
+       - Hidden state nodes are at the top
+    
+    #### How to Use the Visualization:
+    
+    1. **Play Animation**:
+       - Click the "Play" button to see how information flows through time
+       - Watch how the hidden state evolves at each step
+       - Observe how the network maintains memory
+    
+    2. **Interactive Features**:
+       - Hover over nodes to see their values
+       - Zoom in/out to examine specific parts
+       - Pan to view different time steps
+    
+    3. **Understanding the Flow**:
+       - At each time step:
+         1. Input is processed (blue nodes)
+         2. Hidden state is updated (red nodes)
+         3. Information flows to the next time step
+    """)
+    
+    # Add interactive visualization using Plotly
+    import plotly.graph_objects as go
+    import numpy as np
+    
+    # Create a sample sequence
+    sequence_length = 5
+    input_dim = 3
+    hidden_dim = 4
+    
+    # Generate random data for visualization
+    x = np.random.randn(sequence_length, input_dim)
+    h = np.zeros((sequence_length + 1, hidden_dim))
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    # Add input nodes
+    for t in range(sequence_length):
+        for i in range(input_dim):
+            fig.add_trace(go.Scatter(
+                x=[t], y=[i],
+                mode='markers',
+                marker=dict(size=15, color='blue'),
+                name=f'x{t}[{i}]',
+                hovertemplate='Input Feature %{y}<br>Time Step %{x}<br>Value: %{text}<extra></extra>',
+                text=[f'{x[t,i]:.2f}']
+            ))
+    
+    # Add hidden state nodes
+    for t in range(sequence_length + 1):
+        for i in range(hidden_dim):
+            fig.add_trace(go.Scatter(
+                x=[t], y=[input_dim + i],
+                mode='markers',
+                marker=dict(size=15, color='red'),
+                name=f'h{t}[{i}]',
+                hovertemplate='Hidden State %{y}<br>Time Step %{x}<br>Value: %{text}<extra></extra>',
+                text=[f'{h[t,i]:.2f}']
+            ))
+    
+    # Add connections
+    for t in range(sequence_length):
+        # Input to hidden connections
+        for i in range(input_dim):
+            for j in range(hidden_dim):
+                fig.add_trace(go.Scatter(
+                    x=[t, t], y=[i, input_dim + j],
+                    mode='lines',
+                    line=dict(color='gray', width=1),
+                    showlegend=False,
+                    hovertemplate='Input %{y0} → Hidden %{y1}<br>Time Step %{x}<extra></extra>'
+                ))
+        
+        # Hidden to hidden connections
+        for i in range(hidden_dim):
+            for j in range(hidden_dim):
+                fig.add_trace(go.Scatter(
+                    x=[t, t + 1], y=[input_dim + i, input_dim + j],
+                    mode='lines',
+                    line=dict(color='gray', width=1),
+                    showlegend=False,
+                    hovertemplate='Hidden %{y0} → Hidden %{y1}<br>Time Step %{x0} → %{x1}<extra></extra>'
+                ))
+    
+    # Update layout
+    fig.update_layout(
+        title='RNN Cell Visualization',
+        xaxis_title='Time Step',
+        yaxis_title='Node Index',
+        showlegend=True,
+        height=600,
+        width=800,
+        hovermode='closest',
+        annotations=[
+            dict(
+                x=0,
+                y=input_dim + hidden_dim/2,
+                text="Hidden States",
+                showarrow=False,
+                font=dict(size=12, color="red")
+            ),
+            dict(
+                x=0,
+                y=input_dim/2,
+                text="Input Features",
+                showarrow=False,
+                font=dict(size=12, color="blue")
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add explanation of the mathematical operations
+    st.write("""
+    #### Mathematical Operations in the RNN Cell
+    
+    At each time step, the RNN performs the following calculations:
+    
+    1. **Hidden State Update**:
+       ```python
+       h(t) = tanh(W_hh * h(t-1) + W_xh * x(t) + b_h)
+       ```
+       - W_hh: Hidden-to-hidden weights
+       - W_xh: Input-to-hidden weights
+       - b_h: Hidden state bias
+       - tanh: Activation function
+    
+    2. **Output Generation**:
+       ```python
+       y(t) = W_hy * h(t) + b_y
+       ```
+       - W_hy: Hidden-to-output weights
+       - b_y: Output bias
+    
+    3. **Information Flow**:
+       - The hidden state h(t) serves as memory
+       - It combines:
+         - Current input x(t)
+         - Previous hidden state h(t-1)
+       - This allows the network to:
+         - Remember past information
+         - Process current input
+         - Make predictions based on both
+    """)
+    
+    # Add animation frames
+    frames = []
+    for t in range(sequence_length):
+        frame = go.Frame(
+            data=[
+                go.Scatter(
+                    x=[t], y=[i],
+                    mode='markers',
+                    marker=dict(size=15, color='blue')
+                ) for i in range(input_dim)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[input_dim + i],
+                    mode='markers',
+                    marker=dict(size=15, color='red')
+                ) for i in range(hidden_dim)
+            ],
+            name=f'frame_{t}',
+            traces=[i for i in range(input_dim + hidden_dim)]
+        )
+        frames.append(frame)
+    
+    fig.frames = frames
+    
+    # Add animation controls
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                buttons=[
+                    dict(
+                        label="Play",
+                        method="animate",
+                        args=[None, {"frame": {"duration": 500, "redraw": True}, "fromcurrent": True}]
+                    ),
+                    dict(
+                        label="Pause",
+                        method="animate",
+                        args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
+                    )
+                ]
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add practical implications
+    st.write("""
+    #### Practical Implications
+    
+    1. **Memory and Context**:
+       - The hidden state maintains information about previous inputs
+       - This allows the network to understand context
+       - Useful for tasks like:
+         - Language modeling
+         - Time series prediction
+         - Sequence classification
+    
+    2. **Vanishing Gradient Problem**:
+       - Information can be lost over long sequences
+       - The tanh activation helps but doesn't solve it completely
+       - This is why more advanced architectures like LSTM were developed
+    
+    3. **Training Considerations**:
+       - The network learns to:
+         - Update hidden states effectively
+         - Remember relevant information
+         - Forget irrelevant information
+       - This is achieved through:
+         - Backpropagation through time
+         - Gradient descent optimization
+         - Careful initialization of weights
+    """)
+    
     # Initialize model with correct parameters
     input_dim = X_train.shape[2]
     hidden_dim = params['hidden_units']
@@ -1331,25 +1585,315 @@ def handle_lstm(data, params, X_train, X_test, y_train, y_test):
         dropout=params['dropout_rate']
     ))
     
-    # Interactive LSTM Cell Visualization
-    st.write("### LSTM Cell Visualization")
+    # Add detailed explanation of the LSTM visualization
     st.write("""
-    The LSTM cell processes information through time using the following mechanism:
+    #### Understanding the LSTM Visualization
     
-    1. **Gate Operations**:
-       - Forget Gate: Decides what information to discard
-       - Input Gate: Decides what new information to store
-       - Output Gate: Decides what information to output
+    The interactive visualization below shows how an LSTM processes sequential data:
     
-    2. **Memory Cell**:
-       - Maintains long-term dependencies
-       - Updates based on gate activations
-       - Preserves information across time steps
+    1. **Input Nodes (Blue)**:
+       - Represent the input features at each time step
+       - Each blue node is a feature in the input vector
+       - The number of input nodes equals the input dimension
     
-    3. **Information Flow**:
-       - Input → Gates → Memory Cell → Output
-       - Selective information processing
-       - Adaptive memory management
+    2. **Gates (Green, Orange, Purple)**:
+       - Forget Gate (Green): Decides what information to discard
+       - Input Gate (Orange): Decides what new information to store
+       - Output Gate (Purple): Decides what information to output
+    
+    3. **Memory Cell (Red)**:
+       - Stores long-term information
+       - Updated by the forget and input gates
+       - Maintains information across time steps
+    
+    4. **Hidden State (Yellow)**:
+       - Represents the current state of the network
+       - Generated from the memory cell and output gate
+       - Used for predictions and next time step
+    
+    5. **Connections (Gray Lines)**:
+       - Show information flow between components
+       - Thickness represents connection strength
+       - Arrows indicate direction of information flow
+    """)
+    
+    # Add interactive visualization using Plotly
+    import plotly.graph_objects as go
+    import numpy as np
+    
+    # Create a sample sequence
+    sequence_length = 5
+    input_dim = 3
+    hidden_dim = 4
+    
+    # Generate random data for visualization
+    x = np.random.randn(sequence_length, input_dim)
+    h = np.zeros((sequence_length + 1, hidden_dim))
+    c = np.zeros((sequence_length + 1, hidden_dim))
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    # Add gates
+    gate_colors = ['green', 'orange', 'purple']
+    gate_names = ['Forget Gate', 'Input Gate', 'Output Gate']
+    for t in range(sequence_length):
+        for g in range(3):
+            gate_value = np.random.rand()
+            fig.add_trace(go.Scatter(
+                x=[t], y=[input_dim + g],
+                mode='markers',
+                marker=dict(size=15, color=gate_colors[g]),
+                name=f'{gate_names[g]} t={t}',
+                hovertemplate=f'{gate_names[g]}<br>Time Step {t}<br>Value: {gate_value:.2f}<extra></extra>'
+            ))
+    
+    # Add memory cell
+    for t in range(sequence_length + 1):
+        for i in range(hidden_dim):
+            cell_value = c[t,i]
+            fig.add_trace(go.Scatter(
+                x=[t], y=[input_dim + 3 + i],
+                mode='markers',
+                marker=dict(size=15, color='red'),
+                name=f'C{t}[{i}]',
+                hovertemplate=f'Memory Cell {input_dim + 3 + i}<br>Time Step {t}<br>Value: {cell_value:.2f}<extra></extra>'
+            ))
+    
+    # Add hidden state
+    for t in range(sequence_length + 1):
+        for i in range(hidden_dim):
+            hidden_value = h[t,i]
+            fig.add_trace(go.Scatter(
+                x=[t], y=[input_dim + 3 + hidden_dim + i],
+                mode='markers',
+                marker=dict(size=15, color='yellow'),
+                name=f'h{t}[{i}]',
+                hovertemplate=f'Hidden State {input_dim + 3 + hidden_dim + i}<br>Time Step {t}<br>Value: {hidden_value:.2f}<extra></extra>'
+            ))
+    
+    # Add connections
+    for t in range(sequence_length):
+        # Input to gates
+        for i in range(input_dim):
+            for g in range(3):
+                input_value = x[t,i]
+                gate_value = np.random.rand()
+                fig.add_trace(go.Scatter(
+                    x=[t, t], y=[i, input_dim + g],
+                    mode='lines',
+                    line=dict(color='gray', width=1),
+                    showlegend=False,
+                    hovertemplate=f'Input {input_value:.2f} → {gate_names[g]} {gate_value:.2f}<br>Time Step {t}<extra></extra>'
+                ))
+        
+        # Gates to memory cell
+        for g in range(3):
+            for i in range(hidden_dim):
+                gate_value = np.random.rand()
+                cell_value = c[t,i]
+                fig.add_trace(go.Scatter(
+                    x=[t, t], y=[input_dim + g, input_dim + 3 + i],
+                    mode='lines',
+                    line=dict(color=gate_colors[g], width=1),
+                    showlegend=False,
+                    hovertemplate=f'{gate_names[g]} {gate_value:.2f} → Memory Cell {cell_value:.2f}<br>Time Step {t}<extra></extra>'
+                ))
+        
+        # Memory cell connections
+        for i in range(hidden_dim):
+            prev_cell_value = c[t,i]
+            next_cell_value = c[t+1,i]
+            fig.add_trace(go.Scatter(
+                x=[t, t + 1], y=[input_dim + 3 + i, input_dim + 3 + i],
+                mode='lines',
+                line=dict(color='red', width=1),
+                showlegend=False,
+                hovertemplate=f'Memory Cell {prev_cell_value:.2f} → {next_cell_value:.2f}<br>Time Step {t} → {t+1}<extra></extra>'
+            ))
+        
+        # Memory cell to hidden state
+        for i in range(hidden_dim):
+            cell_value = c[t,i]
+            hidden_value = h[t,i]
+            fig.add_trace(go.Scatter(
+                x=[t, t], y=[input_dim + 3 + i, input_dim + 3 + hidden_dim + i],
+                mode='lines',
+                line=dict(color='gray', width=1),
+                showlegend=False,
+                hovertemplate=f'Memory Cell {cell_value:.2f} → Hidden State {hidden_value:.2f}<br>Time Step {t}<extra></extra>'
+            ))
+    
+    # Update layout
+    fig.update_layout(
+        title='LSTM Cell Visualization',
+        xaxis_title='Time Step',
+        yaxis_title='Node Index',
+        showlegend=True,
+        height=800,
+        width=1000,
+        hovermode='closest',
+        annotations=[
+            dict(
+                x=0,
+                y=input_dim/2,
+                text="Input Features",
+                showarrow=False,
+                font=dict(size=12, color="blue")
+            ),
+            dict(
+                x=0,
+                y=input_dim + 1.5,
+                text="Gates",
+                showarrow=False,
+                font=dict(size=12, color="green")
+            ),
+            dict(
+                x=0,
+                y=input_dim + 3 + hidden_dim/2,
+                text="Memory Cell",
+                showarrow=False,
+                font=dict(size=12, color="red")
+            ),
+            dict(
+                x=0,
+                y=input_dim + 3 + hidden_dim + hidden_dim/2,
+                text="Hidden State",
+                showarrow=False,
+                font=dict(size=12, color="yellow")
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add explanation of the mathematical operations
+    st.write("""
+    #### Mathematical Operations in the LSTM Cell
+    
+    At each time step, the LSTM performs the following calculations:
+    
+    1. **Forget Gate**:
+       ```python
+       f(t) = σ(W_f * [h(t-1), x(t)] + b_f)
+       ```
+       - Decides what information to forget from the previous cell state
+       - Uses sigmoid activation (σ) to output values between 0 and 1
+       - 0 means "completely forget", 1 means "completely remember"
+    
+    2. **Input Gate**:
+       ```python
+       i(t) = σ(W_i * [h(t-1), x(t)] + b_i)
+       C̃(t) = tanh(W_C * [h(t-1), x(t)] + b_C)
+       ```
+       - Decides what new information to store
+       - Creates new candidate values for the cell state
+    
+    3. **Cell State Update**:
+       ```python
+       C(t) = f(t) * C(t-1) + i(t) * C̃(t)
+       ```
+       - Combines old and new information
+       - Forget gate controls what to keep from old state
+       - Input gate controls what to add from new state
+    
+    4. **Output Gate**:
+       ```python
+       o(t) = σ(W_o * [h(t-1), x(t)] + b_o)
+       h(t) = o(t) * tanh(C(t))
+       ```
+       - Decides what to output based on the cell state
+       - Generates the new hidden state
+    """)
+    
+    # Add animation frames
+    frames = []
+    for t in range(sequence_length):
+        frame = go.Frame(
+            data=[
+                go.Scatter(
+                    x=[t], y=[i],
+                    mode='markers',
+                    marker=dict(size=15, color='blue')
+                ) for i in range(input_dim)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[input_dim + g],
+                    mode='markers',
+                    marker=dict(size=15, color=gate_colors[g])
+                ) for g in range(3)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[input_dim + 3 + i],
+                    mode='markers',
+                    marker=dict(size=15, color='red')
+                ) for i in range(hidden_dim)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[input_dim + 3 + hidden_dim + i],
+                    mode='markers',
+                    marker=dict(size=15, color='yellow')
+                ) for i in range(hidden_dim)
+            ],
+            name=f'frame_{t}',
+            traces=[i for i in range(input_dim + 3 + hidden_dim * 2)]
+        )
+        frames.append(frame)
+    
+    fig.frames = frames
+    
+    # Add animation controls
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                buttons=[
+                    dict(
+                        label="Play",
+                        method="animate",
+                        args=[None, {"frame": {"duration": 500, "redraw": True}, "fromcurrent": True}]
+                    ),
+                    dict(
+                        label="Pause",
+                        method="animate",
+                        args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
+                    )
+                ]
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add practical implications
+    st.write("""
+    #### Practical Implications
+    
+    1. **Long-Term Dependencies**:
+       - LSTM can maintain information for much longer than basic RNN
+       - The memory cell provides a direct path for gradient flow
+       - Useful for tasks requiring long-term memory:
+         - Language translation
+         - Speech recognition
+         - Time series forecasting
+    
+    2. **Gating Mechanism**:
+       - Forget gate helps prevent information overload
+       - Input gate controls what new information to store
+       - Output gate determines what to output
+       - This selective memory helps in:
+         - Learning long-term patterns
+         - Avoiding the vanishing gradient problem
+         - Maintaining relevant information
+    
+    3. **Training Considerations**:
+       - LSTM requires more parameters than RNN
+       - Training can be slower but more stable
+       - Important to:
+         - Initialize gates properly
+         - Use appropriate learning rates
+         - Monitor gradient flow
+         - Consider using gradient clipping
     """)
     
     # Initialize model with correct parameters
@@ -1534,6 +2078,251 @@ def handle_transformer(data, params, X_train, X_test, y_train, y_test):
     For our regression task, we'll use a simplified version focusing on the encoder part.
     """)
     
+    # Add interactive visualization using Plotly
+    import plotly.graph_objects as go
+    import numpy as np
+    
+    # Create a sample sequence
+    sequence_length = 5
+    d_model = 4  # Model dimension
+    
+    # Generate random data for visualization
+    embeddings = np.random.randn(sequence_length, d_model)
+    attention_weights = np.random.rand(sequence_length, sequence_length)
+    
+    # Create the figure
+    fig = go.Figure()
+    
+    # Add input embeddings
+    for t in range(sequence_length):
+        for d in range(d_model):
+            fig.add_trace(go.Scatter(
+                x=[t], y=[d],
+                mode='markers',
+                marker=dict(size=15, color='blue'),
+                name=f'Embedding t={t},d={d}',
+                hovertemplate=f'Time Step {t}<br>Dimension {d}<br>Value: {embeddings[t,d]:.2f}<extra></extra>'
+            ))
+    
+    # Add attention connections
+    for t1 in range(sequence_length):
+        for t2 in range(sequence_length):
+            if t1 != t2:  # Skip self-connections
+                weight = attention_weights[t1,t2]
+                fig.add_trace(go.Scatter(
+                    x=[t1, t2], y=[d_model/2, d_model/2],
+                    mode='lines',
+                    line=dict(color='gray', width=weight*5),
+                    showlegend=False,
+                    hovertemplate=f'Attention Weight: {weight:.2f}<br>From {t1} to {t2}<extra></extra>'
+                ))
+    
+    # Add positional encoding
+    for t in range(sequence_length):
+        for d in range(d_model):
+            pos_enc = np.sin(t / (10000 ** (2*d/d_model)))
+            fig.add_trace(go.Scatter(
+                x=[t], y=[d_model + d],
+                mode='markers',
+                marker=dict(size=15, color='red'),
+                name=f'Positional Encoding t={t},d={d}',
+                hovertemplate=f'Time Step {t}<br>Dimension {d}<br>Value: {pos_enc:.2f}<extra></extra>'
+            ))
+    
+    # Add feed-forward network
+    for t in range(sequence_length):
+        for d in range(d_model):
+            ff_value = np.random.randn()
+            fig.add_trace(go.Scatter(
+                x=[t], y=[2*d_model + d],
+                mode='markers',
+                marker=dict(size=15, color='green'),
+                name=f'Feed-Forward t={t},d={d}',
+                hovertemplate=f'Time Step {t}<br>Dimension {d}<br>Value: {ff_value:.2f}<extra></extra>'
+            ))
+    
+    # Update layout
+    fig.update_layout(
+        title='Transformer Architecture Visualization',
+        xaxis_title='Time Step',
+        yaxis_title='Layer/Component',
+        showlegend=True,
+        height=800,
+        width=1000,
+        hovermode='closest',
+        annotations=[
+            dict(
+                x=0,
+                y=d_model/2,
+                text="Input Embeddings",
+                showarrow=False,
+                font=dict(size=12, color="blue")
+            ),
+            dict(
+                x=0,
+                y=d_model + d_model/2,
+                text="Positional Encoding",
+                showarrow=False,
+                font=dict(size=12, color="red")
+            ),
+            dict(
+                x=0,
+                y=2*d_model + d_model/2,
+                text="Feed-Forward Network",
+                showarrow=False,
+                font=dict(size=12, color="green")
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add detailed explanation of the visualization
+    st.write("""
+    #### Understanding the Transformer Visualization
+    
+    The interactive visualization above shows the key components of the Transformer architecture:
+    
+    1. **Input Embeddings (Blue)**:
+       - Each blue node represents a dimension in the input embedding
+       - The X-axis shows time steps in the sequence
+       - The Y-axis shows different dimensions of the embedding
+       - Hover over nodes to see their values
+    
+    2. **Attention Connections (Gray Lines)**:
+       - Lines between time steps show attention weights
+       - Thicker lines indicate stronger attention
+       - Hover over lines to see attention weights
+       - Self-attention allows each position to attend to all positions
+    
+    3. **Positional Encoding (Red)**:
+       - Adds position information to embeddings
+       - Uses sine and cosine functions
+       - Helps the model understand sequence order
+       - Hover to see positional encoding values
+    
+    4. **Feed-Forward Network (Green)**:
+       - Processes each position independently
+       - Applies non-linear transformations
+       - Helps capture complex patterns
+       - Hover to see feed-forward values
+    
+    #### Key Mathematical Operations:
+    
+    1. **Self-Attention**:
+       ```python
+       Attention(Q, K, V) = softmax(QK^T/√d_k)V
+       ```
+       - Q: Query matrix
+       - K: Key matrix
+       - V: Value matrix
+       - d_k: Dimension of keys
+    
+    2. **Multi-Head Attention**:
+       ```python
+       MultiHead(Q, K, V) = Concat(head_1, ..., head_h)W^O
+       ```
+       - h parallel attention heads
+       - Each head learns different attention patterns
+       - W^O: Output projection matrix
+    
+    3. **Positional Encoding**:
+       ```python
+       PE(pos, 2i) = sin(pos/10000^(2i/d_model))
+       PE(pos, 2i+1) = cos(pos/10000^(2i/d_model))
+       ```
+       - pos: Position in sequence
+       - i: Dimension index
+       - d_model: Model dimension
+    
+    4. **Feed-Forward Network**:
+       ```python
+       FFN(x) = max(0, xW_1 + b_1)W_2 + b_2
+       ```
+       - W_1, W_2: Weight matrices
+       - b_1, b_2: Bias terms
+       - ReLU activation
+    """)
+    
+    # Add animation frames
+    frames = []
+    for t in range(sequence_length):
+        frame = go.Frame(
+            data=[
+                go.Scatter(
+                    x=[t], y=[d],
+                    mode='markers',
+                    marker=dict(size=15, color='blue')
+                ) for d in range(d_model)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[d_model + d],
+                    mode='markers',
+                    marker=dict(size=15, color='red')
+                ) for d in range(d_model)
+            ] + [
+                go.Scatter(
+                    x=[t], y=[2*d_model + d],
+                    mode='markers',
+                    marker=dict(size=15, color='green')
+                ) for d in range(d_model)
+            ],
+            name=f'frame_{t}',
+            traces=[i for i in range(d_model * 3)]
+        )
+        frames.append(frame)
+    
+    fig.frames = frames
+    
+    # Add animation controls
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons",
+                buttons=[
+                    dict(
+                        label="Play",
+                        method="animate",
+                        args=[None, {"frame": {"duration": 500, "redraw": True}, "fromcurrent": True}]
+                    ),
+                    dict(
+                        label="Pause",
+                        method="animate",
+                        args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
+                    )
+                ]
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig)
+    
+    # Add practical implications
+    st.write("""
+    #### Practical Implications
+    
+    1. **Parallel Processing**:
+       - Unlike RNNs/LSTMs, Transformers process all positions in parallel
+       - This enables faster training and inference
+       - Particularly effective for long sequences
+    
+    2. **Long-Range Dependencies**:
+       - Self-attention mechanism captures relationships between any two positions
+       - No information loss over long distances
+       - Better for tasks requiring global context
+    
+    3. **Scalability**:
+       - Can handle sequences of varying lengths
+       - Scales well with model size
+       - Effective for both small and large datasets
+    
+    4. **Training Considerations**:
+       - Requires careful initialization
+       - Learning rate scheduling is important
+       - Gradient clipping may be necessary
+       - Regularization techniques help prevent overfitting
+    """)
+    
     # 2. Model Parameters Configuration
     st.write("### 2. Model Parameters")
     col1, col2 = st.columns(2)
@@ -1656,7 +2445,7 @@ def handle_transformer(data, params, X_train, X_test, y_train, y_test):
             pe[:, 0, 0::2] = torch.sin(position * div_term)
             pe[:, 0, 1::2] = torch.cos(position * div_term)
             return pe
-            
+                
         def forward(self, x):
             # Get sequence length
             seq_len = x.size(0)
